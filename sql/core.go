@@ -1,6 +1,8 @@
-package sql
+package sql // import "gopkg.in/src-d/go-mysql-server.v0/sql"
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 
 	"gopkg.in/src-d/go-errors.v1"
@@ -77,6 +79,30 @@ type Expression interface {
 	Children() []Expression
 }
 
+// ExpressionHash is a SHA-1 checksum
+type ExpressionHash []byte
+
+// NewExpressionHash returns a new SHA1 hash for given Expression instance.
+// SHA1 checksum will be calculated based on ex.String().
+func NewExpressionHash(ex Expression) ExpressionHash {
+	h := sha1.Sum([]byte(ex.String()))
+	return ExpressionHash(h[:])
+}
+
+// DecodeExpressionHash  decodes a hexadecimal string to ExpressionHash
+func DecodeExpressionHash(hexstr string) (ExpressionHash, error) {
+	h, err := hex.DecodeString(hexstr)
+	if err != nil {
+		return nil, err
+	}
+	return ExpressionHash(h), nil
+}
+
+// EncodeExpressionHash encodes an ExpressionHash to hexadecimal string
+func EncodeExpressionHash(h ExpressionHash) string {
+	return hex.EncodeToString(h)
+}
+
 // Aggregation implements an aggregation expression, where an
 // aggregation buffer is created for each grouping (NewBuffer) and rows in the
 // grouping are fed to the buffer (Update). Multiple buffers can be merged
@@ -125,6 +151,7 @@ type Table interface {
 // Indexable represents a table that supports being indexed and receiving
 // indexes to be able to speed up its execution.
 type Indexable interface {
+	PushdownProjectionAndFiltersTable
 	// IndexKeyValueIter returns an iterator with the values of each row in
 	// the table for the given column names.
 	IndexKeyValueIter(ctx *Context, colNames []string) (IndexKeyValueIter, error)
@@ -132,7 +159,11 @@ type Indexable interface {
 	// method of the table. Returns a new iterator given the columns,
 	// filters and the index so the table can improve its speed instead of
 	// making a full scan.
-	WithProjectFiltersAndIndex(ctx *Context, columns, filters []Expression, index IndexValueIter) (RowIter, error)
+	WithProjectFiltersAndIndex(
+		ctx *Context,
+		columns, filters []Expression,
+		index IndexValueIter,
+	) (RowIter, error)
 }
 
 // PushdownProjectionTable is a table that can produce a specific RowIter
